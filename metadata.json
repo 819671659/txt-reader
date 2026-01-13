@@ -1,0 +1,7 @@
+{
+  "name": "VoxGemini - Advanced TTS Studio",
+  "description": "A high-fidelity text-to-speech application powered by Gemini 2.5. Features built-in voice presets, custom voice recording library, and high-quality audio generation with preview and download capabilities.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
