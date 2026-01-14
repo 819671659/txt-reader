@@ -31,6 +31,7 @@ export interface VoicePreset {
   description: string;
   gender: 'Male' | 'Female' | 'Neutral';
   voiceValue: VoiceName;
+  stylePrompt?: string; // Additional prompt to steer the voice style
 }
 
 export interface CustomVoice {

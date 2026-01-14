@@ -1,11 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { VOICE_PRESETS, MAX_TEXT_LENGTH } from './constants';
-import { VoicePreset, CustomVoice, GeneratedSpeech, VoiceName, Language, User } from './types';
+import { VoicePreset, CustomVoice, GeneratedSpeech, VoiceName, Language } from './types';
 import { GeminiTTSService } from './services/geminiService';
 import { fileToBase64 } from './utils/audioUtils';
 import { translations } from './translations';
-import { DB_CONFIG } from './dbConfig';
 import { saveAudioBlob, getAudioBlob, deleteAudioBlob } from './utils/db';
 
 // Icons as components
@@ -14,18 +13,17 @@ const DownloadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" he
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>;
 const AudioWaveIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10v4"></path><path d="M8 6v12"></path><path d="M13 10v4"></path><path d="M18 8v8"></path></svg>;
-const DatabaseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>;
 const MicIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>;
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>;
 const XCircleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>;
+const KeyIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3L15.5 7.5z"></path></svg>;
+
+const DEFAULT_USER_ID = 'local_user';
 
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>(Language.EN);
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('vox_gemini_key') || '');
   
-  const [formData, setFormData] = useState({ username: '', password: '' });
   const [text, setText] = useState('');
   const [selectedVoice, setSelectedVoice] = useState<VoicePreset>(VOICE_PRESETS[0]);
   const [customVoices, setCustomVoices] = useState<CustomVoice[]>([]);
@@ -52,14 +50,13 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedLang = localStorage.getItem('vox_lang') as Language;
     if (Object.values(Language).includes(savedLang)) setLang(savedLang);
-
-    const sessionUser = sessionStorage.getItem('vox_session_user');
-    if (sessionUser) {
-      const parsedUser = JSON.parse(sessionUser);
-      setUser(parsedUser);
-      loadUserData(parsedUser.id);
-    }
+    loadUserData(DEFAULT_USER_ID);
   }, []);
+
+  const handleApiKeyChange = (val: string) => {
+    setApiKey(val);
+    localStorage.setItem('vox_gemini_key', val);
+  };
 
   const loadUserData = async (userId: string) => {
     const savedHistoryStr = localStorage.getItem(`vox_history_${userId}`);
@@ -87,48 +84,18 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    try {
-      const mockUser: User = {
-        id: btoa(formData.username),
-        username: formData.username,
-        dbConfig: DB_CONFIG
-      };
-      setUser(mockUser);
-      sessionStorage.setItem('vox_session_user', JSON.stringify(mockUser));
-      await loadUserData(mockUser.id);
-    } catch (error) {
-      alert(t.loginError);
-    } finally {
-      setIsAuthLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    history.forEach(item => { if(item.blobUrl) URL.revokeObjectURL(item.blobUrl) });
-    customVoices.forEach(v => { if(v.blobUrl) URL.revokeObjectURL(v.blobUrl) });
-    setUser(null);
-    sessionStorage.removeItem('vox_session_user');
-    setHistory([]);
-    setCustomVoices([]);
-    setSelectedRefVoice(null);
-    setFormData({ username: '', password: '' });
-  };
-
   const processAudioForReference = async (blob: Blob, fileName: string) => {
-    if (!user) return;
+    const keyToUse = apiKey || 'TEST_MODE';
+    
     setIsUploading(true);
     try {
       const base64 = await fileToBase64(new File([blob], fileName, { type: blob.type }));
-      const analysis = await ttsService.current.analyzeVoice(base64, blob.type);
+      const analysis = await ttsService.current.analyzeVoice(keyToUse, base64, blob.type);
       const voiceId = `voice-${Date.now()}`;
       await saveAudioBlob(voiceId, blob);
       const newCustom: CustomVoice = {
         id: voiceId,
-        userId: user.id,
+        userId: DEFAULT_USER_ID,
         name: fileName,
         blobUrl: URL.createObjectURL(blob),
         createdAt: Date.now(),
@@ -137,9 +104,10 @@ const App: React.FC = () => {
       };
       const updatedVoices = [...customVoices, newCustom];
       setCustomVoices(updatedVoices);
-      localStorage.setItem(`vox_custom_voices_${user.id}`, JSON.stringify(updatedVoices.map(({ blobUrl, ...rest }) => rest)));
+      localStorage.setItem(`vox_custom_voices_${DEFAULT_USER_ID}`, JSON.stringify(updatedVoices.map(({ blobUrl, ...rest }) => rest)));
     } catch (error) {
-      alert(lang === Language.EN ? "Could not process audio." : "音频处理失败。");
+      console.error(error);
+      alert(lang === Language.EN ? "Testing Mode Active. In real scenarios, verify API Key." : "测试模式。实际使用请确认 API Key 有效。");
     } finally {
       setIsUploading(false);
     }
@@ -147,7 +115,7 @@ const App: React.FC = () => {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file) return;
     await processAudioForReference(file, file.name);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -196,7 +164,6 @@ const App: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // NEW: Smart base voice selector based on gender
   const getMatchingBaseVoice = (gender: 'Male' | 'Female' | 'Neutral'): VoiceName => {
     if (gender === 'Male') return VoiceName.FENRIR;
     if (gender === 'Female') return VoiceName.KORE;
@@ -204,19 +171,25 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    if (!text.trim() || !user) return;
+    if (!text.trim()) return;
+    const keyToUse = apiKey || 'TEST_MODE';
+    
     setIsGenerating(true);
     try {
-      // Logic: If personal voice is selected, use a matching prebuilt voice as base
       let baseVoice = selectedVoice.voiceValue;
+      let stylePrompt = selectedVoice.stylePrompt;
+
+      // If a personal reference voice is used, it takes precedence over the preset's style
       if (selectedRefVoice) {
         baseVoice = getMatchingBaseVoice(selectedRefVoice.gender || 'Neutral');
+        stylePrompt = selectedRefVoice.description;
       }
 
       const result = await ttsService.current.generateSpeech(
+        keyToUse,
         text, 
         baseVoice,
-        selectedRefVoice?.description
+        stylePrompt
       );
       
       const audioId = Date.now().toString();
@@ -226,7 +199,7 @@ const App: React.FC = () => {
       
       const newEntry: GeneratedSpeech = {
         id: audioId,
-        userId: user.id,
+        userId: DEFAULT_USER_ID,
         text: text.slice(0, 50) + (text.length > 50 ? '...' : ''),
         voiceName: selectedRefVoice ? `${t.usingPersonal} (${selectedRefVoice.name})` : selectedVoice.name,
         blobUrl: result.blobUrl,
@@ -235,9 +208,10 @@ const App: React.FC = () => {
       
       const newHistory = [newEntry, ...history];
       setHistory(newHistory);
-      localStorage.setItem(`vox_history_${user.id}`, JSON.stringify(newHistory.map(({ blobUrl, ...rest }) => rest)));
+      localStorage.setItem(`vox_history_${DEFAULT_USER_ID}`, JSON.stringify(newHistory.map(({ blobUrl, ...rest }) => rest)));
     } catch (error) {
-      alert(t.loginError);
+      console.error(error);
+      alert(lang === Language.EN ? "Speech Generation Error. Ensure your API Key is valid." : "语音生成失败。请确保 API Key 有效。");
     } finally {
       setIsGenerating(false);
     }
@@ -257,259 +231,306 @@ const App: React.FC = () => {
     await deleteAudioBlob(id);
     const updated = history.filter(h => h.id !== id);
     setHistory(updated);
-    if (user) {
-      localStorage.setItem(`vox_history_${user.id}`, JSON.stringify(updated.map(({ blobUrl, ...rest }) => rest)));
-    }
+    localStorage.setItem(`vox_history_${DEFAULT_USER_ID}`, JSON.stringify(updated.map(({ blobUrl, ...rest }) => rest)));
   };
 
   const handleSaveVoiceEdit = () => {
-    if (!user || !editingVoice) return;
+    if (!editingVoice) return;
     const updated = customVoices.map(v => v.id === editingVoice.id ? editingVoice : v);
     setCustomVoices(updated);
-    localStorage.setItem(`vox_custom_voices_${user.id}`, JSON.stringify(updated.map(({ blobUrl, ...rest }) => rest)));
+    localStorage.setItem(`vox_custom_voices_${DEFAULT_USER_ID}`, JSON.stringify(updated.map(({ blobUrl, ...rest }) => rest)));
     setEditingVoice(null);
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col items-center justify-center p-6 text-gray-900">
-        <div className="mb-8 flex items-center space-x-3">
-          <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><AudioWaveIcon /></div>
-          <h1 className="text-3xl font-extrabold tracking-tight">{t.appTitle}</h1>
-        </div>
-        <div className="w-full max-w-md glass-morphism rounded-3xl shadow-2xl overflow-hidden border border-white p-8">
-            <h2 className="text-2xl font-bold mb-2">{t.authWelcome}</h2>
-            <p className="text-gray-500 text-sm mb-8 leading-relaxed">{t.authSubtitle}</p>
-            <form onSubmit={handleAuth} className="space-y-5">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-400 uppercase ml-1">{t.username}</label>
-                <input required type="text" className="w-full px-4 py-3 rounded-xl border border-gray-100 bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-400 uppercase ml-1">{t.password}</label>
-                <input required type="password" className="w-full px-4 py-3 rounded-xl border border-gray-100 bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-              </div>
-              <div className="pt-4 mt-2 flex items-center text-xs text-gray-400 bg-gray-50/50 p-3 rounded-xl border border-dashed">
-                <DatabaseIcon /><span className="ml-2">Connected via config: <b>{DB_CONFIG.host}:{DB_CONFIG.port}</b></span>
-              </div>
-              <button type="submit" disabled={isAuthLoading} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all mt-6">
-                {isAuthLoading ? t.connecting : (authMode === 'login' ? t.login : t.register)}
-              </button>
-            </form>
-            <div className="mt-8 text-center">
-               <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-sm text-gray-400 hover:text-indigo-600 font-medium transition-colors">
-                 {authMode === 'login' ? "Don't have an account? Create one" : "Return to Login"}
-               </button>
-            </div>
-        </div>
-        <div className="mt-8 flex items-center bg-white/50 p-1 rounded-xl border border-white/50 shadow-sm">
-            <button onClick={() => setLang(Language.EN)} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${lang === Language.EN ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>EN</button>
-            <button onClick={() => setLang(Language.ZH)} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${lang === Language.ZH ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>中文</button>
-        </div>
-      </div>
-    );
-  }
+  const handleLanguageToggle = () => {
+    const newLang = lang === Language.EN ? Language.ZH : Language.EN;
+    setLang(newLang);
+    localStorage.setItem('vox_lang', newLang);
+  };
 
   return (
-    <div className="min-h-screen pb-12 text-gray-900">
-      <header className="sticky top-0 z-50 glass-morphism border-b px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="bg-indigo-600 p-2 rounded-lg text-white"><AudioWaveIcon /></div>
+    <div className="min-h-screen pb-12 text-slate-100 font-sans selection:bg-indigo-500/30">
+      <header className="sticky top-0 z-50 glass-card border-b border-white/5 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl text-white shadow-xl shadow-indigo-500/20">
+            <AudioWaveIcon />
+          </div>
           <div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">{t.appTitle}</h1>
-            <p className="text-[10px] text-gray-400 font-medium">{t.subtitle}</p>
+            <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{t.appTitle}</h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{t.subtitle}</p>
           </div>
         </div>
-        <div className="flex items-center space-x-6">
-          <div className="hidden lg:flex flex-col items-end mr-4">
-            <span className="text-xs font-bold text-gray-700">{user.username}</span>
-            <span className="text-[10px] text-green-500 font-medium flex items-center"><span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1"></span>{t.connectedTo}: {user.dbConfig.host}</span>
-          </div>
-          <div className="hidden sm:flex items-center bg-gray-100 rounded-lg p-1">
-            <button onClick={() => setLang(Language.EN)} className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${lang === Language.EN ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>EN</button>
-            <button onClick={() => setLang(Language.ZH)} className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${lang === Language.ZH ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>ZH</button>
-          </div>
-          <button onClick={handleLogout} className="px-4 py-2 bg-gray-50 text-gray-500 text-xs font-bold rounded-lg hover:bg-red-50 hover:text-red-600 transition-all border">{t.logout}</button>
+        
+        <div className="flex flex-1 max-w-lg items-center bg-slate-900/50 rounded-2xl border border-white/5 px-4 py-2 mx-4 w-full shadow-inner">
+           <div className="text-indigo-400"><KeyIcon /></div>
+           <input 
+             type="password" 
+             value={apiKey} 
+             onChange={(e) => handleApiKeyChange(e.target.value)}
+             placeholder={t.apiKeyPlaceholder}
+             className="flex-1 bg-transparent border-none text-sm focus:ring-0 outline-none px-3 font-mono text-indigo-300"
+           />
+           {apiKey ? (
+             <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">READY</span>
+           ) : (
+             <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full font-bold">TEST MODE</span>
+           )}
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLanguageToggle}
+            className="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-bold rounded-xl hover:bg-slate-700 transition-all border border-white/5 hover:border-indigo-500/30 shadow-sm"
+          >
+            {lang === Language.EN ? '中文' : 'English'}
+          </button>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
-          <section className="bg-white rounded-2xl shadow-sm border p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">{t.generateSpeech}</h2>
-              <span className="text-sm text-gray-400">{text.length}/{MAX_TEXT_LENGTH} {t.charLimit}</span>
-            </div>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={t.placeholder} className="w-full h-48 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none leading-relaxed transition-all" maxLength={MAX_TEXT_LENGTH} />
-            <div className="mt-6 flex items-center space-x-4">
-              <button onClick={handleGenerate} disabled={isGenerating || !text.trim()} className={`flex-1 md:flex-none flex items-center justify-center space-x-2 px-8 py-3 rounded-xl font-semibold transition-all shadow-lg ${isGenerating || !text.trim() ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:transform active:scale-95'}`}>
-                {isGenerating ? <span>{t.generating}</span> : <><PlayIcon /><span>{t.generateBtn}</span></>}
-              </button>
-              {selectedRefVoice && (
-                <button onClick={() => setSelectedRefVoice(null)} className="flex items-center space-x-2 px-4 py-3 rounded-xl border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-all text-sm font-medium">
-                  <XCircleIcon />
-                  <span>{t.removeRef}</span>
+          <section className="glow-border">
+            <div className="glass-card rounded-3xl p-8 relative overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+                  {t.generateSpeech}
+                </h2>
+                <span className="text-xs font-mono text-slate-500 bg-slate-900/50 px-3 py-1 rounded-full border border-white/5">{text.length}/{MAX_TEXT_LENGTH}</span>
+              </div>
+              <textarea 
+                value={text} 
+                onChange={(e) => setText(e.target.value)} 
+                placeholder={t.placeholder} 
+                className="w-full h-56 p-6 rounded-2xl border border-white/5 bg-slate-900/40 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none resize-none leading-relaxed transition-all text-slate-200 placeholder-slate-600" 
+                maxLength={MAX_TEXT_LENGTH} 
+              />
+              <div className="mt-8 flex flex-wrap items-center gap-4">
+                <button 
+                  onClick={handleGenerate} 
+                  disabled={isGenerating || !text.trim()} 
+                  className={`flex-1 md:flex-none flex items-center justify-center space-x-3 px-10 py-4 rounded-2xl font-bold transition-all shadow-2xl ${isGenerating || !text.trim() ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white hover:brightness-110 active:scale-95 shadow-indigo-500/20'}`}
+                >
+                  {isGenerating ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <PlayIcon />}
+                  <span>{isGenerating ? t.generating : t.generateBtn}</span>
                 </button>
-              )}
+                {selectedRefVoice && (
+                  <button onClick={() => setSelectedRefVoice(null)} className="flex items-center space-x-2 px-6 py-4 rounded-2xl border border-rose-500/20 text-rose-400 bg-rose-500/5 hover:bg-rose-500/10 transition-all text-sm font-bold">
+                    <XCircleIcon />
+                    <span>{t.removeRef}</span>
+                  </button>
+                )}
+              </div>
             </div>
           </section>
 
-          <section className={`bg-white rounded-2xl shadow-sm border p-6 transition-all ${selectedRefVoice ? 'opacity-50 pointer-events-none grayscale-[0.5]' : 'opacity-100'}`}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{t.voicePresets}</h2>
-              {selectedRefVoice && <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full animate-pulse">{t.usingPersonal}</span>}
+          <section className={`transition-all duration-500 ${selectedRefVoice ? 'opacity-30 blur-[2px] pointer-events-none' : 'opacity-100'}`}>
+            <div className="flex items-center justify-between mb-6 px-2">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-purple-500 rounded-full"></span>
+                {t.voicePresets}
+              </h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {VOICE_PRESETS.map((voice) => (
-                <button key={voice.id} onClick={() => setSelectedVoice(voice)} className={`p-4 rounded-xl border-2 transition-all text-left ${selectedVoice.id === voice.id ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-gray-100 hover:bg-gray-50'}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold">{voice.name}</span>
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-white border rounded-full text-gray-400">{voice.gender}</span>
+                <button 
+                  key={voice.id} 
+                  onClick={() => setSelectedVoice(voice)} 
+                  className={`group relative p-5 rounded-2xl border transition-all text-left overflow-hidden ${selectedVoice.id === voice.id ? 'bg-indigo-500/10 border-indigo-500/50 ring-1 ring-indigo-500/20 shadow-lg shadow-indigo-500/10' : 'bg-slate-900/40 border-white/5 hover:bg-slate-800/60 hover:border-white/10'}`}
+                >
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`font-bold ${selectedVoice.id === voice.id ? 'text-indigo-300' : 'text-slate-300'}`}>{voice.name}</span>
+                      <span className={`text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full border ${voice.gender === 'Male' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : voice.gender === 'Female' ? 'bg-pink-500/10 text-pink-400 border-pink-500/20' : 'bg-slate-500/10 text-slate-400 border-slate-500/20'}`}>{voice.gender}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                      {t[`${voice.id}_desc` as keyof typeof t] || voice.description}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 line-clamp-2">{voice.description}</p>
+                  {selectedVoice.id === voice.id && (
+                    <div className="absolute bottom-0 right-0 w-12 h-12 bg-indigo-500/20 blur-2xl rounded-full"></div>
+                  )}
                 </button>
               ))}
             </div>
           </section>
 
-          <section className="bg-white rounded-2xl shadow-sm border p-6">
-            <h2 className="text-lg font-semibold mb-4">{t.library}</h2>
-            {history.length === 0 ? (
-              <div className="py-12 flex flex-col items-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed">
-                <AudioWaveIcon /><p className="mt-2 text-sm">{t.noClips}</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {history.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:shadow-sm transition-all group">
-                    <div className="flex flex-col min-w-0 pr-4">
-                      <span className="text-sm font-medium truncate">"{item.text}"</span>
-                      <span className="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Voice: {item.voiceName} • {new Date(item.createdAt).toLocaleTimeString()}</span>
+          <section className="glow-border">
+            <div className="glass-card rounded-3xl p-8">
+              <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                {t.library}
+              </h2>
+              {history.length === 0 ? (
+                <div className="py-20 flex flex-col items-center text-slate-600 bg-slate-900/20 rounded-2xl border border-white/5 border-dashed">
+                  <div className="p-4 bg-slate-900/50 rounded-full mb-4 opacity-50"><AudioWaveIcon /></div>
+                  <p className="text-sm font-medium">{t.noClips}</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {history.map((item) => (
+                    <div key={item.id} className="group flex items-center justify-between p-5 bg-slate-900/30 rounded-2xl border border-white/5 hover:bg-slate-800/50 hover:border-white/10 transition-all">
+                      <div className="flex flex-col min-w-0 pr-6">
+                        <span className="text-sm font-semibold text-slate-200 truncate group-hover:text-white transition-colors">"{item.text}"</span>
+                        <div className="flex items-center mt-2 space-x-3">
+                           <span className="text-[9px] text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full font-bold border border-indigo-500/10">{item.voiceName}</span>
+                           <span className="text-[9px] text-slate-500 font-bold uppercase">{new Date(item.createdAt).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1 shrink-0">
+                        {item.blobUrl && (
+                          <>
+                            <audio id={`audio-${item.id}`} src={item.blobUrl} className="hidden" preload="auto" />
+                            <button onClick={() => handlePlayHistory(item.id)} className="p-3 text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-all"><PlayIcon /></button>
+                            <a href={item.blobUrl} download={`voxgemini-${item.id}.wav`} className="p-3 text-emerald-400 hover:bg-emerald-500/10 rounded-xl transition-all"><DownloadIcon /></a>
+                          </>
+                        )}
+                        <button onClick={() => handleDeleteHistory(item.id)} className="p-3 text-slate-600 hover:text-rose-500 hover:bg-rose-500/5 rounded-xl transition-all"><TrashIcon /></button>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2 shrink-0">
-                      {item.blobUrl && (
-                        <>
-                          <audio id={`audio-${item.id}`} src={item.blobUrl} className="hidden" preload="auto" />
-                          <button onClick={() => handlePlayHistory(item.id)} className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"><PlayIcon /></button>
-                          <a href={item.blobUrl} download={`voxgemini-${item.id}.wav`} className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"><DownloadIcon /></a>
-                        </>
-                      )}
-                      <button onClick={() => handleDeleteHistory(item.id)} className="p-2 text-gray-400 hover:text-red-600 transition-colors"><TrashIcon /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         </div>
 
         <div className="lg:col-span-4 space-y-8">
-          <section className="bg-white rounded-2xl shadow-sm border p-6 flex flex-col h-fit">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-semibold">{t.personalVoices}</h2>
-              <div className="flex space-x-2">
-                <button onClick={startRecording} disabled={isRecording} className={`p-2 rounded-full transition-all ${isRecording ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`} title={t.record}>
-                  <MicIcon />
-                </button>
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-indigo-600 bg-indigo-50 rounded-full hover:bg-indigo-100 transition-colors"><PlusIcon /></button>
-              </div>
-              <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="audio/*" />
-            </div>
-
-            {isRecording && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex flex-col items-center animate-in fade-in zoom-in duration-300">
-                <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-bold text-red-600">{t.recording} {formatDuration(recordDuration)}</span>
+          <section className="glow-border">
+            <div className="glass-card rounded-3xl p-8 flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>
+                  {t.personalVoices}
+                </h2>
+                <div className="flex space-x-2">
+                  <button onClick={startRecording} disabled={isRecording} className={`p-2.5 rounded-xl transition-all ${isRecording ? 'bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/40' : 'bg-slate-800 text-slate-300 hover:text-indigo-400 border border-white/5'}`}>
+                    <MicIcon />
+                  </button>
+                  <button onClick={() => fileInputRef.current?.click()} className="p-2.5 bg-slate-800 text-slate-300 hover:text-indigo-400 rounded-xl transition-all border border-white/5">
+                    <PlusIcon />
+                  </button>
                 </div>
-                <div className="flex space-x-3">
-                  <button onClick={stopRecording} className="px-4 py-2 bg-red-500 text-white rounded-lg text-xs font-bold hover:bg-red-600 transition-colors shadow-sm">{t.stopRecording}</button>
-                  <button onClick={cancelRecording} className="px-4 py-2 bg-white text-gray-500 border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 transition-colors">{t.cancel}</button>
-                </div>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="audio/*" />
               </div>
-            )}
 
-            <p className="text-xs text-gray-500 mb-4">{t.personalVoicesDesc}</p>
-            {customVoices.length === 0 ? (
-                <div className="py-8 text-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl italic text-xs">{t.noPersonalVoices}</div>
-              ) : (
-                customVoices.map((voice) => (
-                  <div key={voice.id} className={`p-3 rounded-xl border mb-3 cursor-pointer transition-all ${selectedRefVoice?.id === voice.id ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'bg-gray-50 hover:bg-white hover:border-gray-200'}`} onClick={() => setSelectedRefVoice(selectedRefVoice?.id === voice.id ? null : voice)}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center space-x-2 truncate">
-                        <span className="text-sm font-semibold truncate">{voice.name}</span>
-                        {voice.gender && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${voice.gender === 'Male' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-pink-50 text-pink-600 border-pink-100'}`}>
-                            {voice.gender}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingVoice({...voice}); }} className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"><EditIcon /></button>
-                        <button onClick={(e) => { e.stopPropagation(); deleteAudioBlob(voice.id); setCustomVoices(v => v.filter(vv => vv.id !== voice.id)); }} className="p-1 text-gray-400 hover:text-red-500 transition-colors"><TrashIcon /></button>
-                      </div>
-                    </div>
-                    {voice.description && <p className="text-[10px] text-gray-500 line-clamp-2 italic">"{voice.description}"</p>}
+              {isRecording && (
+                <div className="mb-6 p-5 bg-rose-500/5 border border-rose-500/20 rounded-2xl flex flex-col items-center animate-in fade-in zoom-in duration-300">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-bold text-rose-400 tracking-widest uppercase">{t.recording} {formatDuration(recordDuration)}</span>
                   </div>
-                ))
+                  <div className="flex space-x-2 w-full">
+                    <button onClick={stopRecording} className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20">{t.stopRecording}</button>
+                    <button onClick={cancelRecording} className="flex-1 py-2.5 bg-slate-800 text-slate-400 border border-white/5 rounded-xl text-[10px] font-bold hover:bg-slate-700 transition-all">{t.cancel}</button>
+                  </div>
+                </div>
               )}
-            
-            {selectedRefVoice && (
-              <div className="mt-4 p-3 bg-indigo-50 rounded-xl border border-indigo-100 animate-in slide-in-from-top-2">
-                 <h4 className="text-xs font-bold text-indigo-600 flex items-center mb-1">
-                   <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full mr-1.5"></div>
-                   {t.activeStyle}
-                 </h4>
-                 <p className="text-[10px] text-indigo-500">{t.activeStyleDesc.replace('{gender}', selectedRefVoice.gender || 'Neutral')}</p>
+
+              <p className="text-[11px] text-slate-500 mb-6 leading-relaxed font-medium italic opacity-80">{t.personalVoicesDesc}</p>
+              
+              <div className="space-y-3">
+                {customVoices.length === 0 ? (
+                  <div className="py-12 text-center text-slate-700 border border-white/5 border-dashed rounded-2xl text-[10px] font-bold uppercase tracking-widest">{t.noPersonalVoices}</div>
+                ) : (
+                  customVoices.map((voice) => (
+                    <div 
+                      key={voice.id} 
+                      className={`group p-4 rounded-2xl border transition-all cursor-pointer ${selectedRefVoice?.id === voice.id ? 'bg-indigo-500/10 border-indigo-500/50 shadow-lg shadow-indigo-500/5' : 'bg-slate-900/30 border-white/5 hover:bg-slate-800/60'}`} 
+                      onClick={() => setSelectedRefVoice(selectedRefVoice?.id === voice.id ? null : voice)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2 truncate">
+                          <span className="text-sm font-bold text-slate-200 truncate">{voice.name}</span>
+                          {voice.gender && (
+                            <span className={`text-[8px] px-2 py-0.5 rounded-full border font-bold ${voice.gender === 'Male' ? 'bg-blue-500/10 text-blue-400 border-blue-500/10' : 'bg-pink-500/10 text-pink-400 border-pink-500/10'}`}>
+                              {voice.gender}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={(e) => { e.stopPropagation(); setEditingVoice({...voice}); }} className="p-1.5 text-slate-500 hover:text-indigo-400"><EditIcon /></button>
+                          <button onClick={(e) => { e.stopPropagation(); deleteAudioBlob(voice.id); setCustomVoices(v => v.filter(vv => vv.id !== voice.id)); }} className="p-1.5 text-slate-500 hover:text-rose-500"><TrashIcon /></button>
+                        </div>
+                      </div>
+                      {voice.description && <p className="text-[10px] text-slate-500 line-clamp-1 italic font-medium">"{voice.description}"</p>}
+                    </div>
+                  ))
+                )}
               </div>
-            )}
+              
+              {selectedRefVoice && (
+                <div className="mt-6 p-4 bg-indigo-500/5 rounded-2xl border border-indigo-500/10 animate-in slide-in-from-top-2">
+                   <h4 className="text-[10px] font-bold text-indigo-400 flex items-center mb-1 uppercase tracking-widest">
+                     <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full mr-2"></div>
+                     {t.activeStyle}
+                   </h4>
+                   <p className="text-[9px] text-slate-500 font-medium">{t.activeStyleDesc.replace('{gender}', selectedRefVoice.gender || 'Neutral')}</p>
+                </div>
+              )}
+            </div>
           </section>
-          <section className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl shadow-lg p-6 text-white">
-            <h3 className="font-bold mb-3 flex items-center">💡 {t.tips}</h3>
-            <ul className="text-xs space-y-3 opacity-90">
-              <li>• {t.tip1}</li>
-              <li>• {t.tip2}</li>
-              <li>• {t.tip3}</li>
+          
+          <section className="bg-gradient-to-br from-indigo-600/20 to-purple-700/20 rounded-3xl border border-white/10 p-8 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-white/10 transition-colors"></div>
+            <h3 className="font-bold mb-4 flex items-center text-sm text-indigo-300">
+              <span className="mr-2">✨</span> {t.tips}
+            </h3>
+            <ul className="text-[11px] space-y-4 text-slate-400 font-medium">
+              <li className="flex gap-3 leading-relaxed">
+                <span className="text-indigo-500 font-bold">•</span>
+                {t.tip1}
+              </li>
+              <li className="flex gap-3 leading-relaxed">
+                <span className="text-indigo-500 font-bold">•</span>
+                {t.tip2}
+              </li>
+              <li className="flex gap-3 leading-relaxed">
+                <span className="text-indigo-500 font-bold">•</span>
+                {t.tip3}
+              </li>
             </ul>
           </section>
         </div>
       </main>
 
-      {/* Edit Voice Modal */}
       {editingVoice && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 animate-in zoom-in duration-200">
-            <h3 className="text-xl font-bold mb-6 text-gray-900">{t.editVoice}</h3>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+          <div className="bg-slate-900 w-full max-w-md rounded-[2.5rem] border border-white/10 p-10 shadow-2xl animate-in zoom-in duration-300">
+            <h3 className="text-xl font-bold mb-8 text-white">{t.editVoice}</h3>
+            <div className="space-y-6">
               <div>
-                <label className="text-xs font-bold text-gray-400 uppercase ml-1">{t.voiceNameLabel}</label>
-                <input type="text" className="w-full px-4 py-3 rounded-xl border border-gray-100 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" value={editingVoice.name} onChange={e => setEditingVoice({...editingVoice, name: e.target.value})} />
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 mb-2 block">{t.voiceNameLabel}</label>
+                <input type="text" className="w-full px-5 py-4 rounded-2xl border border-white/5 bg-slate-800 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm font-medium" value={editingVoice.name} onChange={e => setEditingVoice({...editingVoice, name: e.target.value})} />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-400 uppercase ml-1">{t.voiceRemarksLabel}</label>
-                <textarea className="w-full px-4 py-3 rounded-xl border border-gray-100 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none transition-all h-24 resize-none" value={editingVoice.description} onChange={e => setEditingVoice({...editingVoice, description: e.target.value})} />
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 mb-2 block">{t.voiceRemarksLabel}</label>
+                <textarea className="w-full px-5 py-4 rounded-2xl border border-white/5 bg-slate-800 focus:ring-1 focus:ring-indigo-500 outline-none transition-all h-32 resize-none text-sm font-medium" value={editingVoice.description} onChange={e => setEditingVoice({...editingVoice, description: e.target.value})} />
               </div>
               {editingVoice.gender && (
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-bold text-gray-400 uppercase">{t.genderLabel}</span>
-                  <span className={`text-xs font-bold ${editingVoice.gender === 'Male' ? 'text-blue-600' : 'text-pink-600'}`}>{editingVoice.gender}</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.genderLabel}</span>
+                  <span className={`text-[10px] font-bold px-3 py-1 rounded-full border ${editingVoice.gender === 'Male' ? 'text-blue-400 border-blue-400/20 bg-blue-400/5' : 'text-pink-400 border-pink-400/20 bg-pink-400/5'}`}>{editingVoice.gender}</span>
                 </div>
               )}
             </div>
-            <div className="flex space-x-3 mt-8">
-              <button onClick={handleSaveVoiceEdit} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">{t.save}</button>
-              <button onClick={() => setEditingVoice(null)} className="flex-1 bg-gray-50 text-gray-500 py-3 rounded-xl font-bold hover:bg-gray-100 transition-all border">{t.cancelEdit}</button>
+            <div className="flex flex-col sm:flex-row gap-3 mt-10">
+              <button onClick={handleSaveVoiceEdit} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20">{t.save}</button>
+              <button onClick={() => setEditingVoice(null)} className="flex-1 bg-slate-800 text-slate-300 py-4 rounded-2xl font-bold hover:bg-slate-700 transition-all border border-white/5">{t.cancelEdit}</button>
             </div>
           </div>
         </div>
       )}
 
       {isUploading && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[120] flex items-center justify-center">
-          <div className="bg-white p-8 rounded-2xl text-center shadow-xl">
-            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h3 className="text-lg font-bold">{t.analyzing}</h3>
-            <p className="text-sm text-gray-500">{t.analyzingDesc}</p>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xl z-[120] flex items-center justify-center">
+          <div className="bg-slate-900 p-12 rounded-[3rem] text-center shadow-3xl border border-white/10 max-w-sm w-full">
+            <div className="relative w-20 h-20 mx-auto mb-8">
+              <div className="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">{t.analyzing}</h3>
+            <p className="text-sm text-slate-500 leading-relaxed font-medium">{t.analyzingDesc}</p>
           </div>
         </div>
       )}

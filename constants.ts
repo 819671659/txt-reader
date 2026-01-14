@@ -10,11 +10,11 @@ export const VOICE_PRESETS: VoicePreset[] = [
     voiceValue: VoiceName.ZEPHYR
   },
   {
-    id: 'v2',
-    name: 'Puck',
-    description: 'Energetic and bright, perfect for social media.',
-    gender: 'Neutral',
-    voiceValue: VoiceName.PUCK
+    id: 'v4',
+    name: 'Kore',
+    description: 'Soft, pleasant and friendly.',
+    gender: 'Female',
+    voiceValue: VoiceName.KORE
   },
   {
     id: 'v3',
@@ -24,11 +24,28 @@ export const VOICE_PRESETS: VoicePreset[] = [
     voiceValue: VoiceName.CHARON
   },
   {
-    id: 'v4',
-    name: 'Kore',
-    description: 'Soft, pleasant and friendly.',
+    id: 'v6',
+    name: 'Little Girl',
+    description: 'Innocent and sweet child voice.',
     gender: 'Female',
-    voiceValue: VoiceName.KORE
+    voiceValue: VoiceName.KORE,
+    stylePrompt: 'Speak in a very high-pitched, innocent, and sweet voice of a 6-year-old little girl.'
+  },
+  {
+    id: 'v7',
+    name: 'Loli',
+    description: 'Cute, high-pitched anime style voice.',
+    gender: 'Female',
+    voiceValue: VoiceName.KORE,
+    stylePrompt: 'Speak in a cute, energetic, very high-pitched anime-style girl (Loli) voice.'
+  },
+  {
+    id: 'v8',
+    name: 'Mature Sister',
+    description: 'Elegant, cool and reliable female voice.',
+    gender: 'Female',
+    voiceValue: VoiceName.KORE,
+    stylePrompt: 'Speak in a mature, elegant, calm, and sophisticated female voice with a confident tone.'
   },
   {
     id: 'v5',

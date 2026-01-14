@@ -4,25 +4,25 @@ import { VoiceName } from "../types";
 import { decodeBase64, decodeAudioData, audioBufferToWav } from "../utils/audioUtils";
 
 export class GeminiTTSService {
-  private ai: GoogleGenAI;
-
-  constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  private getAI(apiKey: string) {
+    return new GoogleGenAI({ apiKey });
   }
 
   /**
    * Generates speech from text using the specified voice.
    */
   async generateSpeech(
+    apiKey: string,
     text: string, 
     voice: VoiceName, 
     referenceDescription?: string
   ): Promise<{ blobUrl: string; buffer: AudioBuffer }> {
+    const ai = this.getAI(apiKey);
     const prompt = referenceDescription 
       ? `Speak the following text exactly as written. Style: ${referenceDescription}. Text: ${text}`
       : text;
 
-    const response = await this.ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
@@ -53,8 +53,9 @@ export class GeminiTTSService {
   /**
    * Use multimodal Gemini to describe an uploaded voice and detect gender
    */
-  async analyzeVoice(base64Audio: string, mimeType: string): Promise<{ description: string, gender: 'Male' | 'Female' | 'Neutral' }> {
-    const response = await this.ai.models.generateContent({
+  async analyzeVoice(apiKey: string, base64Audio: string, mimeType: string): Promise<{ description: string, gender: 'Male' | 'Female' | 'Neutral' }> {
+    const ai = this.getAI(apiKey);
+    const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
         parts: [
